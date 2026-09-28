@@ -1,0 +1,16 @@
+# Dependencias
+node_modules/
+
+# Build de Next
+.next/
+out/
+
+# Credenciales: NUNCA subir a GitHub
+.env
+.env.local
+.env*.local
+
+# Varios
+.DS_Store
+*.log
+.vercel
