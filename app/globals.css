@@ -1317,3 +1317,17 @@ table.data-table {
 }
 
 .table-tools { display: flex; justify-content: flex-end; margin: -0.3rem 0 0.4rem; }
+
+/* Creatividad ganadora de la campana (mayor alcance / mas ventas) */
+.ad-top-tag {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: var(--success);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+}
+.stat-strip .text-good b { color: var(--success); }

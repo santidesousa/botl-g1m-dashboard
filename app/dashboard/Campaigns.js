@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatMoney, formatPercent } from "./format";
+import { formatCompactNumber, formatMoney, formatPercent } from "./format";
 
 const STATUS = {
   ACTIVE: { label: "Activa", cls: "badge-active" },
@@ -22,9 +22,19 @@ export function StatusBadge({ status }) {
   return <span className={`badge ${s.cls}`}>{s.label}</span>;
 }
 
+// Solo se resalta lo positivo (las cuentas recien arrancan: nada en rojo).
 export function roasClass(roas) {
-  if (roas === null || roas === undefined) return "";
-  return roas >= 1 ? "text-good" : "text-bad";
+  return roas !== null && roas !== undefined && roas >= 1 ? "text-good" : "";
+}
+
+const REACH_OBJECTIVES = ["OUTCOME_AWARENESS", "REACH", "BRAND_AWARENESS"];
+
+/**
+ * Como se mide la campana: "reach" (alcance: gana la creatividad con mayor
+ * alcance) o "sales" (ventas y remarketing: gana la que mas vende).
+ */
+export function campaignGoal(campaign) {
+  return REACH_OBJECTIVES.includes(campaign.objective) ? "reach" : "sales";
 }
 
 export const OBJECTIVES = {
@@ -48,6 +58,7 @@ const FILTERS = [
 
 const COLUMNS = [
   { key: "spend", label: "Inversión" },
+  { key: "reach", label: "Alcance" },
   { key: "purchases", label: "Compras" },
   { key: "cpa", label: "CPA", asc: true },
   { key: "roas", label: "ROAS" },
@@ -115,12 +126,13 @@ export default function Campaigns({ campaigns, totalSpend, currency, onSelect })
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={c.id} className={"row-clickable" + (c.m.noResults ? " row-alert" : "")} onClick={() => onSelect(c.id)}>
+              <tr key={c.id} className="row-clickable" onClick={() => onSelect(c.id)}>
                 <td>
                   <div className="strong">{c.name}</div>
                   <div className="small muted" style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
                     <StatusBadge status={c.status} />
                     {OBJECTIVES[c.objective] || c.objective}
+                    {campaignGoal(c) === "reach" ? " · se mide por alcance" : " · se mide por ventas"}
                     {c.dailyBudget ? ` · ${formatMoney(c.dailyBudget, currency)}/día` : ""}
                   </div>
                 </td>
@@ -128,7 +140,10 @@ export default function Campaigns({ campaigns, totalSpend, currency, onSelect })
                   {formatMoney(c.m.spend, currency)}
                   <div className="small muted">{totalSpend ? formatPercent(c.m.spend / totalSpend) : ""}</div>
                 </td>
-                <td className={"mono" + (c.m.noResults ? " text-bad" : "")} style={{ textAlign: "right" }}>
+                <td className="mono" style={{ textAlign: "right" }}>
+                  {c.m.reach ? formatCompactNumber(c.m.reach) : "—"}
+                </td>
+                <td className="mono" style={{ textAlign: "right" }}>
                   {c.m.purchases}
                 </td>
                 <td className="mono" style={{ textAlign: "right" }}>
@@ -147,7 +162,7 @@ export default function Campaigns({ campaigns, totalSpend, currency, onSelect })
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="empty-state">
+                <td colSpan={8} className="empty-state">
                   No hay campañas con este filtro.
                 </td>
               </tr>

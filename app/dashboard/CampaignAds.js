@@ -2,17 +2,74 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchJson } from "./api";
-import { formatMoney, formatPercent } from "./format";
-import { OBJECTIVES, StatusBadge, roasClass } from "./Campaigns";
+import { formatCompactNumber, formatMoney, formatNumber, formatPercent } from "./format";
+import { OBJECTIVES, StatusBadge, campaignGoal, roasClass } from "./Campaigns";
 import { withRatios } from "@/lib/metaMetrics";
 
-const SORTS = [
-  { key: "spend", label: "Inversión" },
-  { key: "purchases", label: "Compras" },
-  { key: "roas", label: "ROAS" },
-  { key: "cpa", label: "CPA", asc: true },
-  { key: "ctr", label: "CTR" },
-];
+const dash = (v, fmt) => (v === null || v === undefined ? "—" : fmt(v));
+
+/**
+ * Como se mide cada tipo de campana (ver campaignGoal):
+ * - reach: gana la creatividad con mayor alcance.
+ * - sales (ventas y remarketing): gana la que mas vende.
+ * Nada se pinta en rojo: las cuentas recien arrancan.
+ */
+const GOALS = {
+  reach: {
+    label: "Campaña de alcance: se mide por la creatividad con mayor alcance.",
+    topTag: "Mayor alcance",
+    sorts: [
+      { key: "reach", label: "Alcance" },
+      { key: "impressions", label: "Impresiones" },
+      { key: "cpm", label: "CPM", asc: true },
+      { key: "spend", label: "Inversión" },
+      { key: "ctr", label: "CTR" },
+    ],
+    summary: (m, c) => [
+      ["Alcance", dash(m.reach, formatCompactNumber), true],
+      ["Impresiones", formatCompactNumber(m.impressions)],
+      ["Frecuencia", dash(m.frequency, (v) => v.toFixed(2))],
+      ["CPM", dash(m.cpm, (v) => formatMoney(v, c))],
+      ["Inversión", formatMoney(m.spend, c)],
+      ["CTR", m.impressions ? formatPercent(m.ctr, 2) : "—"],
+    ],
+    card: (m, c) => [
+      ["Alcance", dash(m.reach, formatNumber), m.reach > 0],
+      ["Impresiones", formatNumber(m.impressions)],
+      ["Frecuencia", dash(m.frequency, (v) => v.toFixed(2))],
+      ["CPM", dash(m.cpm, (v) => formatMoney(v, c))],
+      ["Inversión", formatMoney(m.spend, c)],
+      ["CTR", formatPercent(m.ctr, 2)],
+    ],
+  },
+  sales: {
+    label: "Campaña de ventas / remarketing: se mide por la creatividad que más vende.",
+    topTag: "Más ventas",
+    sorts: [
+      { key: "purchases", label: "Compras" },
+      { key: "purchaseValue", label: "Ingresos" },
+      { key: "roas", label: "ROAS" },
+      { key: "spend", label: "Inversión" },
+      { key: "ctr", label: "CTR" },
+    ],
+    summary: (m, c) => [
+      ["Compras", formatNumber(m.purchases), m.purchases > 0],
+      ["Ingresos", m.hasPurchaseValue ? formatMoney(m.purchaseValue, c) : "—"],
+      ["ROAS", dash(m.roas, (v) => `${v.toFixed(2)}x`), roasClass(m.roas) !== ""],
+      ["CPA", dash(m.cpa, (v) => formatMoney(v, c))],
+      ["Inversión", formatMoney(m.spend, c)],
+      ["CTR", m.impressions ? formatPercent(m.ctr, 2) : "—"],
+    ],
+    card: (m, c) => [
+      ["Compras", formatNumber(m.purchases), m.purchases > 0],
+      ["Ingresos", m.hasPurchaseValue ? formatMoney(m.purchaseValue, c) : "—"],
+      ["ROAS", dash(m.roas, (v) => `${v.toFixed(2)}x`), roasClass(m.roas) !== ""],
+      ["CPA", dash(m.cpa, (v) => formatMoney(v, c))],
+      ["Inversión", formatMoney(m.spend, c)],
+      ["CTR", formatPercent(m.ctr, 2)],
+    ],
+  },
+};
 
 const FILTERS = [
   { key: "ALL", label: "Todos", test: () => true },
@@ -22,12 +79,13 @@ const FILTERS = [
 
 /**
  * Detalle de una campana: sus anuncios con creatividad y metricas del
- * periodo (se piden a /api/meta/ads al entrar).
+ * periodo (se piden a /api/meta/ads al entrar), ordenados segun el objetivo.
  */
 export default function CampaignAds({ account, campaign, range, currency, onBack }) {
+  const goal = GOALS[campaignGoal(campaign)];
   const [ads, setAds] = useState(null);
   const [error, setError] = useState(null);
-  const [sortKey, setSortKey] = useState("spend");
+  const [sortKey, setSortKey] = useState(goal.sorts[0].key);
   const [filter, setFilter] = useState("ALL");
   const [openAd, setOpenAd] = useState(null);
 
@@ -45,8 +103,7 @@ export default function CampaignAds({ account, campaign, range, currency, onBack
     };
   }, [account.slug, campaign.id, range.since, range.until]);
 
-  const m = campaign.m;
-  const sort = SORTS.find((s) => s.key === sortKey);
+  const sort = goal.sorts.find((s) => s.key === sortKey);
   const rows = useMemo(
     () =>
       (ads || [])
@@ -61,6 +118,13 @@ export default function CampaignAds({ account, campaign, range, currency, onBack
     [ads, filter, sortKey, sort]
   );
 
+  // La creatividad ganadora segun el criterio principal (alcance o compras).
+  const mainKey = goal.sorts[0].key;
+  const topId = useMemo(() => {
+    const best = (ads || []).reduce((b, a) => ((a.m[mainKey] || 0) > (b?.m[mainKey] || 0) ? a : b), null);
+    return best?.id || null;
+  }, [ads, mainKey]);
+
   return (
     <div className="card" id="anuncios">
       <button className="link-btn" onClick={onBack} style={{ marginBottom: 10 }}>
@@ -74,31 +138,19 @@ export default function CampaignAds({ account, campaign, range, currency, onBack
             {OBJECTIVES[campaign.objective] || campaign.objective}
             {campaign.dailyBudget ? ` · ${formatMoney(campaign.dailyBudget, currency)}/día` : ""}
           </div>
+          <div className="section-sub" style={{ marginTop: 4 }}>{goal.label}</div>
         </div>
       </div>
 
       <div className="stat-strip">
-        <span>
-          Inversión <b>{formatMoney(m.spend, currency)}</b>
-        </span>
-        <span>
-          Ingresos <b>{m.hasPurchaseValue ? formatMoney(m.purchaseValue, currency) : "—"}</b>
-        </span>
-        <span className={roasClass(m.roas)}>
-          ROAS <b>{m.roas !== null ? `${m.roas.toFixed(2)}x` : "—"}</b>
-        </span>
-        <span>
-          Compras <b>{m.purchases}</b>
-        </span>
-        <span>
-          CPA <b>{m.cpa !== null ? formatMoney(m.cpa, currency) : "—"}</b>
-        </span>
-        <span>
-          CTR <b>{m.impressions ? formatPercent(m.ctr, 2) : "—"}</b>
-        </span>
+        {goal.summary(campaign.m, currency).map(([label, value, good]) => (
+          <span key={label} className={good ? "text-good" : ""}>
+            {label} <b>{value}</b>
+          </span>
+        ))}
       </div>
 
-      {error && <p style={{ color: "var(--danger)" }}>No pudimos traer los anuncios: {error}</p>}
+      {error && <p style={{ color: "var(--muted)" }}>No pudimos traer los anuncios: {error}</p>}
       {!error && !ads && (
         <div className="ad-grid">
           {Array.from({ length: 6 }, (_, i) => (
@@ -122,7 +174,7 @@ export default function CampaignAds({ account, campaign, range, currency, onBack
               ))}
             </div>
             <div className="segmented">
-              {SORTS.map((s) => (
+              {goal.sorts.map((s) => (
                 <button key={s.key} className={sortKey === s.key ? "active" : ""} onClick={() => setSortKey(s.key)}>
                   {s.label}
                 </button>
@@ -134,7 +186,13 @@ export default function CampaignAds({ account, campaign, range, currency, onBack
 
           <div className="ad-grid">
             {rows.map((ad) => (
-              <AdCard key={ad.id} ad={ad} currency={currency} onClick={() => setOpenAd(ad)} />
+              <AdCard
+                key={ad.id}
+                ad={ad}
+                metrics={goal.card(ad.m, currency)}
+                topTag={ad.id === topId ? goal.topTag : null}
+                onClick={() => setOpenAd(ad)}
+              />
             ))}
           </div>
         </>
@@ -145,14 +203,13 @@ export default function CampaignAds({ account, campaign, range, currency, onBack
   );
 }
 
-function AdCard({ ad, currency, onClick }) {
-  const m = ad.m;
+function AdCard({ ad, metrics, topTag, onClick }) {
   return (
-    <div className={"ad-card" + (m.noResults ? " ad-card-alert" : "")} onClick={onClick}>
+    <div className="ad-card" onClick={onClick}>
       <div className="ad-image">
         {ad.image ? <img src={ad.image} alt={ad.name} loading="lazy" /> : <div className="ad-noimage">Sin imagen</div>}
         {ad.isVideo && <span className="ad-video-tag">▶ Video</span>}
-        {m.fatigue && <span className="ad-fatigue-tag">Fatiga · frec. {m.frequency.toFixed(1)}</span>}
+        {topTag && <span className="ad-top-tag">★ {topTag}</span>}
       </div>
       <div className="ad-body">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
@@ -165,18 +222,10 @@ function AdCard({ ad, currency, onClick }) {
           {ad.adsetName}
         </div>
         <div className="ad-metrics">
-          <Metric label="Inversión" value={formatMoney(m.spend, currency)} />
-          <Metric label="Compras" value={m.purchases} tone={m.noResults ? "bad" : m.purchases > 0 ? "good" : ""} />
-          <Metric label="CPA" value={m.cpa !== null ? formatMoney(m.cpa, currency) : "—"} tone={m.noResults ? "bad" : ""} />
-          <Metric
-            label="ROAS"
-            value={m.roas !== null ? `${m.roas.toFixed(2)}x` : "—"}
-            tone={m.roas === null ? "" : m.roas >= 1 ? "good" : "bad"}
-          />
-          <Metric label="CTR" value={formatPercent(m.ctr, 2)} />
-          <Metric label="CPC" value={m.cpc !== null ? formatMoney(m.cpc, currency) : "—"} />
+          {metrics.map(([label, value, good]) => (
+            <Metric key={label} label={label} value={value} tone={good ? "good" : ""} />
+          ))}
         </div>
-        {m.noResults && <div className="alert-note">⚠ Gastó {formatMoney(m.spend, currency)} sin ventas</div>}
       </div>
     </div>
   );
@@ -201,6 +250,7 @@ function AdDrawer({ ad, campaignName, currency, onClose }) {
   const m = ad.m;
   const rows = [
     ["Inversión", formatMoney(m.spend, currency)],
+    ["Alcance", m.reach !== null && m.reach !== undefined ? Math.round(m.reach).toLocaleString("es-AR") : "—"],
     ["Impresiones", Math.round(m.impressions).toLocaleString("es-AR")],
     ["Frecuencia", m.frequency !== null && m.frequency !== undefined ? m.frequency.toFixed(2) : "—"],
     ["Clicks en el enlace", Math.round(m.linkClicks).toLocaleString("es-AR")],
@@ -246,12 +296,6 @@ function AdDrawer({ ad, campaignName, currency, onClose }) {
             <a href={ad.link} target="_blank" rel="noopener noreferrer">
               Ver destino del anuncio ↗
             </a>
-          </div>
-        )}
-
-        {m.noResults && (
-          <div className="alert-note" style={{ marginTop: 12 }}>
-            ⚠ Gastó {formatMoney(m.spend, currency)} sin ninguna compra en el período
           </div>
         )}
 

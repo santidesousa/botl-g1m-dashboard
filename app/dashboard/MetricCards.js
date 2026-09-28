@@ -11,11 +11,14 @@ import { delta, formatPercent } from "./format";
  * resuelven var(--...).
  */
 
-/** "good" | "bad" | "neutral" segun la direccion del cambio y la metrica */
+/**
+ * "good" | "neutral" segun la direccion del cambio y la metrica. Las cuentas
+ * recien arrancan: los empeoramientos se muestran en gris, nunca en rojo.
+ */
 export function changeTone(def, change) {
   if (!def.better || change === 0) return "neutral";
   const improved = def.better === "up" ? change > 0 : change < 0;
-  return improved ? "good" : "bad";
+  return improved ? "good" : "neutral";
 }
 
 /**

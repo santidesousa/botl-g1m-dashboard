@@ -10,7 +10,7 @@ import CampaignAds from "./CampaignAds";
 import { fetchJson } from "./api";
 import { formatCompactNumber, formatDayLabel, formatMoney, formatPercent } from "./format";
 import { CARD_KEYS, EVOLUTION_DEFAULT, EVOLUTION_KEYS, metricDefs } from "./metricDefs";
-import { FATIGUE_FREQUENCY, emptyMetrics, withRatios } from "@/lib/metaMetrics";
+import { emptyMetrics, withRatios } from "@/lib/metaMetrics";
 import { addDays } from "@/lib/dateRange";
 
 const NOT_CONNECTED = "No conectado con Meta todavia";
@@ -105,7 +105,7 @@ function Dashboard({ account, data, range }) {
         <span>
           Alcance <b>{t.reach ? formatCompactNumber(t.reach) : "—"}</b>
         </span>
-        <span className={t.frequency >= FATIGUE_FREQUENCY ? "text-bad" : ""}>
+        <span>
           Frecuencia <b>{t.frequency ? t.frequency.toFixed(2) : "—"}</b>
         </span>
         <span>
@@ -124,7 +124,7 @@ function Dashboard({ account, data, range }) {
       {p && (
         <div className="section-sub" style={{ marginBottom: 16 }}>
           Variaciones vs. {formatDayLabel(data.previousRange.since)} – {formatDayLabel(data.previousRange.until)}{" "}
-          (mismos días inmediatamente anteriores). Verde = mejora, rojo = empeora. CTR y CPC: sobre clicks en el
+          (mismos días inmediatamente anteriores). Verde = mejora. CTR y CPC: sobre clicks en el
           enlace.
         </div>
       )}
