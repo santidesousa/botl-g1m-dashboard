@@ -2,105 +2,109 @@ import { NextResponse } from "next/server";
 import { cached } from "@/lib/cache";
 import { errorResponse, httpError, requireAccount, requireMetaToken, requireRange } from "../../_shared/route-helpers";
 import {
-  getAdImageUrls,
+  CREATIVE_FIELDS,
+  getAccountInsights,
+  getActiveAds,
   getAdsWithDetails,
   getCampaignAccountId,
-  getLargeThumbnails,
-  getVideoCovers,
+  getObjectsByIds,
 } from "@/lib/meta";
+import { creativeImage, creativeText, loadHdImages } from "@/lib/creatives";
 import { parseInsight } from "@/lib/metaMetrics";
 
-// Hash de la imagen principal de la creatividad (imagen simple, primera del
-// carrusel, creatividad dinamica o portada del video).
-function creativeImageHash(c) {
-  const spec = c?.object_story_spec || {};
-  return (
-    c?.image_hash ||
-    spec.link_data?.image_hash ||
-    spec.link_data?.child_attachments?.[0]?.image_hash ||
-    spec.photo_data?.image_hash ||
-    c?.asset_feed_spec?.images?.[0]?.hash ||
-    spec.video_data?.image_hash ||
-    null
-  );
-}
-
-function creativeVideoId(c) {
-  const spec = c?.object_story_spec || {};
-  return c?.video_id || spec.video_data?.video_id || c?.asset_feed_spec?.videos?.[0]?.video_id || null;
-}
-
-/**
- * La mejor imagen disponible, de mayor a menor calidad: la original por hash,
- * image_url, la portada grande del video, la miniatura pedida a 1080px y, por
- * ultimo, thumbnail_url (64x64: se ve pixelada, solo si no hay otra cosa).
- */
-function creativeImage(c, hd) {
-  if (!c) return null;
-  const spec = c.object_story_spec || {};
-  return (
-    hd.images[creativeImageHash(c)] ||
-    c.image_url ||
-    hd.videos[creativeVideoId(c)] ||
-    spec.video_data?.image_url ||
-    hd.thumbs[c.id] ||
-    spec.link_data?.picture ||
-    c.thumbnail_url ||
-    null
-  );
-}
-
-// Cada fuente es opcional: si una falla, seguimos con las demas.
-async function loadHdImages(token, accountId, ads) {
-  const creatives = ads.map((a) => a.creative).filter(Boolean);
-  const safe = (p) => p.catch((err) => (console.error("Imagenes HD:", err.message), {}));
-  const [images, videos, thumbs] = await Promise.all([
-    safe(getAdImageUrls(token, accountId, creatives.map(creativeImageHash))),
-    safe(getVideoCovers(token, creatives.map(creativeVideoId).filter(Boolean))),
-    safe(getLargeThumbnails(token, creatives.map((c) => c.id))),
-  ]);
-  return { images, videos, thumbs };
-}
-
-function creativeText(c) {
-  const spec = c?.object_story_spec || {};
-  return {
-    title: c?.title || spec.link_data?.name || spec.video_data?.title || null,
-    body: c?.body || spec.link_data?.message || spec.video_data?.message || null,
-    link: c?.object_url || c?.link_url || spec.link_data?.link || spec.video_data?.call_to_action?.value?.link || null,
-    isVideo: Boolean(creativeVideoId(c) || spec.video_data),
-  };
-}
-
-// GET /api/meta/ads?account=botl&campaignId=120...&since=2026-09-01&until=2026-09-27
-// Anuncios de una campana, con creatividad y metricas del periodo. La campana
-// tiene que pertenecer a la cuenta de la pestana.
+// GET /api/meta/ads?account=botl&since=2026-09-01&until=2026-09-27[&campaignId=120...]
+// Sin campaignId: todos los anuncios de la cuenta (los que tuvieron actividad
+// en el periodo + los que estan activos hoy). Con campaignId: solo los de esa
+// campana, que tiene que pertenecer a la cuenta de la pestana.
 export async function GET(request) {
   try {
     const token = requireMetaToken();
     const account = requireAccount(request);
     const range = requireRange(request);
     const campaignId = new URL(request.url).searchParams.get("campaignId");
-    if (!/^\d+$/.test(campaignId || "")) throw httpError("Falta el parametro campaignId", 400, "bad_request");
+    if (campaignId && !/^\d+$/.test(campaignId)) throw httpError("campaignId invalido", 400, "bad_request");
 
-    const { data, generatedAt } = await cached(["ads-v2", account.id, campaignId, range.since, range.until], async () => {
-      if ((await getCampaignAccountId(token, campaignId)) !== account.id) {
-        throw httpError("La campaña no pertenece a esta cuenta", 403, "forbidden");
-      }
-      const ads = await getAdsWithDetails(token, campaignId, range);
-      const hd = await loadHdImages(token, account.id, ads);
-      return ads.map((ad) => ({
-        id: ad.id,
-        name: ad.name,
-        adsetName: ad.adset?.name || null,
-        status: ad.effective_status || ad.status,
-        image: creativeImage(ad.creative, hd),
-        ...creativeText(ad.creative),
-        metrics: parseInsight(ad.insights?.data?.[0] || {}),
-      }));
-    });
+    const { data, generatedAt } = await cached(
+      ["ads-v3", account.id, campaignId || "all", range.since, range.until],
+      () => (campaignId ? campaignAds(token, account, campaignId, range) : accountAds(token, account, range))
+    );
     return NextResponse.json({ ads: data, generatedAt });
   } catch (err) {
     return errorResponse(err);
   }
+}
+
+async function campaignAds(token, account, campaignId, range) {
+  if ((await getCampaignAccountId(token, campaignId)) !== account.id) {
+    throw httpError("La campaña no pertenece a esta cuenta", 403, "forbidden");
+  }
+  const ads = await getAdsWithDetails(token, campaignId, range);
+  const hd = await loadHdImages(token, account.id, ads);
+  return ads.map((ad) => ({
+    id: ad.id,
+    name: ad.name,
+    adsetName: ad.adset?.name || null,
+    campaignId,
+    status: ad.effective_status || ad.status,
+    image: creativeImage(ad.creative, hd),
+    ...creativeText(ad.creative),
+    metrics: parseInsight(ad.insights?.data?.[0] || {}),
+  }));
+}
+
+async function accountAds(token, account, range) {
+  const [rows, active] = await Promise.all([
+    getAccountInsights(token, account.id, range, {
+      level: "ad",
+      fields: "ad_id,ad_name,adset_name,campaign_id,campaign_name",
+    }),
+    // Si falla, seguimos sin el listado de activos antes que romper el panel.
+    getActiveAds(token, account.id).catch((err) => {
+      console.error("No se pudieron traer los anuncios activos", err.message);
+      return [];
+    }),
+  ]);
+  const activeById = Object.fromEntries(active.map((a) => [a.id, a]));
+
+  // Creatividad y estado de los anuncios con actividad que no estan activos.
+  const others = await getObjectsByIds(
+    token,
+    rows.map((r) => r.ad_id).filter((id) => !activeById[id]),
+    { fields: `effective_status,${CREATIVE_FIELDS}` }
+  ).catch((err) => {
+    console.error("No se pudieron traer las creatividades", err.message);
+    return {};
+  });
+
+  const objFor = (id) => activeById[id] || others[id] || {};
+  const hd = await loadHdImages(token, account.id, [...active, ...Object.values(others)]);
+
+  return [
+    ...rows.map((r) => {
+      const obj = objFor(r.ad_id);
+      return {
+        id: r.ad_id,
+        name: r.ad_name,
+        adsetName: r.adset_name,
+        campaignId: r.campaign_id,
+        status: obj.effective_status || null,
+        image: creativeImage(obj.creative, hd),
+        ...creativeText(obj.creative),
+        metrics: parseInsight(r),
+      };
+    }),
+    // Activos sin actividad en el periodo: con metricas en cero.
+    ...active
+      .filter((a) => !rows.some((r) => r.ad_id === a.id))
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        adsetName: a.adset?.name || null,
+        campaignId: a.campaign?.id || null,
+        status: a.effective_status,
+        image: creativeImage(a.creative, hd),
+        ...creativeText(a.creative),
+        metrics: parseInsight({}),
+      })),
+  ];
 }

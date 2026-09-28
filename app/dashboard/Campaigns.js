@@ -70,7 +70,7 @@ const COLUMNS = [
  * Tabla de campanas con metricas del periodo. Click en una fila entra a la
  * campana (sus anuncios).
  */
-export default function Campaigns({ campaigns, totalSpend, currency, onSelect }) {
+export default function Campaigns({ campaigns, totalSpend, currency, selectedId, onSelect }) {
   // Arranca en "Activas" si hay alguna; si no, muestra todas.
   const [filter, setFilter] = useState(() => (campaigns.some((c) => c.status === "ACTIVE") ? "ACTIVE" : "ALL"));
   const [sort, setSort] = useState({ key: "spend", dir: -1 });
@@ -96,7 +96,7 @@ export default function Campaigns({ campaigns, totalSpend, currency, onSelect })
       <div className="section-head">
         <div>
           <h2>Campañas</h2>
-          <div className="section-sub">Click en una campaña para ver sus anuncios · click en una columna para ordenar</div>
+          <div className="section-sub">Click en una campaña para filtrar los anuncios de abajo · click en una columna para ordenar</div>
         </div>
       </div>
       <div className="filter-row" style={{ flexWrap: "wrap" }}>
@@ -126,7 +126,11 @@ export default function Campaigns({ campaigns, totalSpend, currency, onSelect })
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={c.id} className="row-clickable" onClick={() => onSelect(c.id)}>
+              <tr
+                key={c.id}
+                className={"row-clickable" + (selectedId === c.id ? " row-selected" : "")}
+                onClick={() => onSelect(selectedId === c.id ? null : c.id)}
+              >
                 <td>
                   <div className="strong">{c.name}</div>
                   <div className="small muted" style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>

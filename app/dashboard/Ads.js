@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchJson } from "./api";
 import { formatCompactNumber, formatMoney, formatNumber, formatPercent } from "./format";
 import { OBJECTIVES, StatusBadge, campaignGoal, roasClass } from "./Campaigns";
-import { withRatios } from "@/lib/metaMetrics";
 
 const dash = (v, fmt) => (v === null || v === undefined ? "—" : fmt(v));
 
@@ -71,139 +69,170 @@ const GOALS = {
   },
 };
 
-const FILTERS = [
-  { key: "ALL", label: "Todos", test: () => true },
-  { key: "ACTIVE", label: "Activos", test: (a) => a.status === "ACTIVE" },
-  { key: "SPEND", label: "Con inversión", test: (a) => a.m.spend > 0 },
+// Sin campana elegida se ven los anuncios de toda la cuenta.
+const ALL_SORTS = [
+  { key: "spend", label: "Inversión" },
+  { key: "reach", label: "Alcance" },
+  { key: "purchases", label: "Compras" },
+  { key: "roas", label: "ROAS" },
+  { key: "ctr", label: "CTR" },
 ];
 
+const FILTERS = [
+  // Circulando hoy: anuncio, conjunto y campana activos.
+  { key: "ACTIVE", label: "Activos ahora", test: (a) => a.status === "ACTIVE" },
+  { key: "ALL", label: "Con actividad", test: (a) => a.m.impressions > 0 || a.m.spend > 0 },
+  { key: "SALES", label: "Con ventas", test: (a) => a.m.purchases > 0 },
+];
+
+const PAGE = 12;
+
 /**
- * Detalle de una campana: sus anuncios con creatividad y metricas del
- * periodo (se piden a /api/meta/ads al entrar), ordenados segun el objetivo.
+ * Grilla de creatividades de la cuenta con sus metricas del periodo, debajo
+ * de la tabla de campanas. Click en una campana la filtra: ahi se ordena y
+ * mide segun el objetivo (alcance o ventas) y se destaca la ganadora.
+ * Cada tarjeta muestra las metricas que corresponden a su campana.
  */
-export default function CampaignAds({ account, campaign, range, currency, onBack }) {
-  const goal = GOALS[campaignGoal(campaign)];
-  const [ads, setAds] = useState(null);
-  const [error, setError] = useState(null);
-  const [sortKey, setSortKey] = useState(goal.sorts[0].key);
-  const [filter, setFilter] = useState("ALL");
+export default function Ads({ ads, error, campaigns, campaign, currency, onClearCampaign }) {
+  const goal = campaign ? GOALS[campaignGoal(campaign)] : null;
+  const sorts = goal ? goal.sorts : ALL_SORTS;
+  const campaignById = useMemo(() => Object.fromEntries(campaigns.map((c) => [c.id, c])), [campaigns]);
+
+  const base = useMemo(
+    () => (ads || []).filter((a) => !campaign || a.campaignId === campaign.id),
+    [ads, campaign]
+  );
+  // Arranca en lo que esta circulando hoy (si hay algo activo).
+  const [filter, setFilter] = useState(() => (base.some((a) => a.status === "ACTIVE") ? "ACTIVE" : "ALL"));
+  const [sortKey, setSortKey] = useState(sorts[0].key);
+  const [limit, setLimit] = useState(PAGE);
   const [openAd, setOpenAd] = useState(null);
 
+  // Cuando llegan los anuncios (se piden aparte) se recalcula el filtro inicial.
   useEffect(() => {
-    let alive = true;
-    setAds(null);
-    setError(null);
-    fetchJson(
-      `/api/meta/ads?account=${account.slug}&campaignId=${campaign.id}&since=${range.since}&until=${range.until}`
-    )
-      .then((d) => alive && setAds(d.ads.map((a) => ({ ...a, m: withRatios(a.metrics) }))))
-      .catch((err) => alive && setError(err.message));
-    return () => {
-      alive = false;
-    };
-  }, [account.slug, campaign.id, range.since, range.until]);
+    if (ads) setFilter(base.some((a) => a.status === "ACTIVE") ? "ACTIVE" : "ALL");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ads]);
+  useEffect(() => setLimit(PAGE), [filter, sortKey]);
 
-  const sort = goal.sorts.find((s) => s.key === sortKey);
-  const rows = useMemo(
-    () =>
-      (ads || [])
-        .filter(FILTERS.find((f) => f.key === filter).test)
-        .sort((a, b) => {
-          const va = a.m[sortKey];
-          const vb = b.m[sortKey];
-          if (va === null || va === undefined) return 1;
-          if (vb === null || vb === undefined) return -1;
-          return sort.asc ? va - vb : vb - va;
-        }),
-    [ads, filter, sortKey, sort]
-  );
+  const sort = sorts.find((s) => s.key === sortKey) || sorts[0];
+  const rows = base
+    .filter(FILTERS.find((f) => f.key === filter).test)
+    .sort((a, b) => {
+      const va = a.m[sort.key];
+      const vb = b.m[sort.key];
+      if (va === null || va === undefined) return 1;
+      if (vb === null || vb === undefined) return -1;
+      return sort.asc ? va - vb : vb - va;
+    });
 
-  // La creatividad ganadora segun el criterio principal (alcance o compras).
-  const mainKey = goal.sorts[0].key;
+  // La creatividad ganadora de la campana (mayor alcance o mas ventas).
+  const mainKey = goal?.sorts[0].key;
   const topId = useMemo(() => {
-    const best = (ads || []).reduce((b, a) => ((a.m[mainKey] || 0) > (b?.m[mainKey] || 0) ? a : b), null);
+    if (!mainKey) return null;
+    const best = base.reduce((b, a) => ((a.m[mainKey] || 0) > (b?.m[mainKey] || 0) ? a : b), null);
     return best?.id || null;
-  }, [ads, mainKey]);
+  }, [base, mainKey]);
+
+  const goalFor = (ad) => GOALS[campaignById[ad.campaignId] ? campaignGoal(campaignById[ad.campaignId]) : "sales"];
 
   return (
     <div className="card" id="anuncios">
-      <button className="link-btn" onClick={onBack} style={{ marginBottom: 10 }}>
-        ← Volver a campañas
-      </button>
       <div className="section-head">
         <div style={{ minWidth: 0 }}>
-          <h2>{campaign.name}</h2>
-          <div className="small muted" style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+          <h2>Anuncios</h2>
+          <div className="section-sub">
+            {campaign
+              ? goal.label
+              : "Todos los anuncios de la cuenta · click en una campaña de arriba para ver solo los suyos"}
+            {" · click en un anuncio para ver el detalle"}
+          </div>
+        </div>
+        <div className="segmented">
+          {sorts.map((s) => (
+            <button key={s.key} className={sort.key === s.key ? "active" : ""} onClick={() => setSortKey(s.key)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {campaign && (
+        <>
+          <div className="small muted" style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
             <StatusBadge status={campaign.status} />
             {OBJECTIVES[campaign.objective] || campaign.objective}
             {campaign.dailyBudget ? ` · ${formatMoney(campaign.dailyBudget, currency)}/día` : ""}
           </div>
-          <div className="section-sub" style={{ marginTop: 4 }}>{goal.label}</div>
-        </div>
-      </div>
-
-      <div className="stat-strip">
-        {goal.summary(campaign.m, currency).map(([label, value, good]) => (
-          <span key={label} className={good ? "text-good" : ""}>
-            {label} <b>{value}</b>
-          </span>
-        ))}
-      </div>
-
-      {error && <p style={{ color: "var(--muted)" }}>No pudimos traer los anuncios: {error}</p>}
-      {!error && !ads && (
-        <div className="ad-grid">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="ad-card skeleton" style={{ height: 320 }} />
-          ))}
-        </div>
-      )}
-
-      {ads && (
-        <>
-          <div className="section-head" style={{ marginTop: 8 }}>
-            <div className="filter-row" style={{ flexWrap: "wrap", margin: 0 }}>
-              {FILTERS.map((f) => (
-                <div
-                  key={f.key}
-                  className={"filter-pill" + (filter === f.key ? " active" : "")}
-                  onClick={() => setFilter(f.key)}
-                >
-                  {f.label} ({ads.filter(f.test).length})
-                </div>
-              ))}
-            </div>
-            <div className="segmented">
-              {goal.sorts.map((s) => (
-                <button key={s.key} className={sortKey === s.key ? "active" : ""} onClick={() => setSortKey(s.key)}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {rows.length === 0 && <div className="empty-state">No hay anuncios con este filtro.</div>}
-
-          <div className="ad-grid">
-            {rows.map((ad) => (
-              <AdCard
-                key={ad.id}
-                ad={ad}
-                metrics={goal.card(ad.m, currency)}
-                topTag={ad.id === topId ? goal.topTag : null}
-                onClick={() => setOpenAd(ad)}
-              />
+          <div className="stat-strip">
+            {goal.summary(campaign.m, currency).map(([label, value, good]) => (
+              <span key={label} className={good ? "text-good" : ""}>
+                {label} <b>{value}</b>
+              </span>
             ))}
           </div>
         </>
       )}
 
-      {openAd && <AdDrawer ad={openAd} campaignName={campaign.name} currency={currency} onClose={() => setOpenAd(null)} />}
+      <div className="filter-row" style={{ flexWrap: "wrap" }}>
+        {FILTERS.map((f) => (
+          <div
+            key={f.key}
+            className={"filter-pill" + (filter === f.key ? " active" : "")}
+            onClick={() => setFilter(f.key)}
+          >
+            {f.label} ({ads ? base.filter(f.test).length : "…"})
+          </div>
+        ))}
+        {campaign && (
+          <div className="filter-chip" onClick={onClearCampaign}>
+            Campaña: {campaign.name} <span aria-label="Quitar filtro">×</span>
+          </div>
+        )}
+      </div>
+
+      {error && <p className="muted">No pudimos traer los anuncios: {error}</p>}
+      {!error && !ads && (
+        <div className="ad-grid">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="ad-card skeleton" style={{ height: 320 }} />
+          ))}
+        </div>
+      )}
+      {ads && rows.length === 0 && <div className="empty-state">No hay anuncios con este filtro.</div>}
+
+      <div className="ad-grid">
+        {rows.slice(0, limit).map((ad) => (
+          <AdCard
+            key={ad.id}
+            ad={ad}
+            campaignName={campaign ? null : campaignById[ad.campaignId]?.name}
+            metrics={goalFor(ad).card(ad.m, currency)}
+            topTag={ad.id === topId && ad.m[mainKey] > 0 ? goal.topTag : null}
+            onClick={() => setOpenAd(ad)}
+          />
+        ))}
+      </div>
+
+      {rows.length > limit && (
+        <button className="link-btn" onClick={() => setLimit(limit + PAGE)}>
+          Ver más ({rows.length - limit} restantes)
+        </button>
+      )}
+
+      {openAd && (
+        <AdDrawer
+          ad={openAd}
+          campaignName={campaignById[openAd.campaignId]?.name}
+          currency={currency}
+          onClose={() => setOpenAd(null)}
+        />
+      )}
     </div>
   );
 }
 
-function AdCard({ ad, metrics, topTag, onClick }) {
+function AdCard({ ad, campaignName, metrics, topTag, onClick }) {
   return (
     <div className="ad-card" onClick={onClick}>
       <div className="ad-image">
@@ -218,8 +247,8 @@ function AdCard({ ad, metrics, topTag, onClick }) {
           </div>
           <StatusBadge status={ad.status} />
         </div>
-        <div className="small muted ad-campaign" title={ad.adsetName || ""}>
-          {ad.adsetName}
+        <div className="small muted ad-campaign" title={campaignName || ad.adsetName || ""}>
+          {campaignName || ad.adsetName}
         </div>
         <div className="ad-metrics">
           {metrics.map(([label, value, good]) => (

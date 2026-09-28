@@ -6,7 +6,7 @@ import PageHeader from "./PageHeader";
 import MetricCards from "./MetricCards";
 import Evolution from "./Evolution";
 import Campaigns from "./Campaigns";
-import CampaignAds from "./CampaignAds";
+import Ads from "./Ads";
 import { fetchJson } from "./api";
 import { formatCompactNumber, formatDayLabel, formatMoney, formatPercent } from "./format";
 import { CARD_KEYS, EVOLUTION_DEFAULT, EVOLUTION_KEYS, metricDefs } from "./metricDefs";
@@ -93,9 +93,22 @@ function Dashboard({ account, data, range }) {
 
   const selectedCampaign = campaigns.find((c) => c.id === campaignId) || null;
 
-  function openCampaign(id) {
+  // Anuncios de toda la cuenta (se piden aparte para no demorar el resumen).
+  const [ads, setAds] = useState(null);
+  const [adsError, setAdsError] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetchJson(`/api/meta/ads?account=${account.slug}&since=${range.since}&until=${range.until}`)
+      .then((d) => alive && setAds(d.ads.map((a) => ({ ...a, m: withRatios(a.metrics) }))))
+      .catch((err) => alive && setAdsError(err.message));
+    return () => {
+      alive = false;
+    };
+  }, [account.slug, range.since, range.until]);
+
+  function selectCampaign(id) {
     setCampaignId(id);
-    if (id) requestAnimationFrame(() => document.getElementById("detalle")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    if (id) requestAnimationFrame(() => document.getElementById("anuncios")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   return (
@@ -132,21 +145,27 @@ function Dashboard({ account, data, range }) {
       <Evolution defs={defs} toggleKeys={EVOLUTION_KEYS} defaultOn={EVOLUTION_DEFAULT} weekly={weekly} daily={series} />
 
       <div className="detail-heading" id="detalle">
-        <h2>{selectedCampaign ? "Anuncios de la campaña" : "Campañas"}</h2>
+        <h2>Detalle: campañas y anuncios</h2>
         <div className="section-sub">Todo lo de abajo corresponde al período elegido.</div>
       </div>
 
-      {selectedCampaign ? (
-        <CampaignAds
-          account={account}
-          campaign={selectedCampaign}
-          range={range}
-          currency={currency}
-          onBack={() => setCampaignId(null)}
-        />
-      ) : (
-        <Campaigns campaigns={campaigns} totalSpend={t.spend} currency={currency} onSelect={openCampaign} />
-      )}
+      <Campaigns
+        campaigns={campaigns}
+        totalSpend={t.spend}
+        currency={currency}
+        selectedId={campaignId}
+        onSelect={selectCampaign}
+      />
+
+      <Ads
+        key={campaignId || "all"}
+        ads={ads}
+        error={adsError}
+        campaigns={campaigns}
+        campaign={selectedCampaign}
+        currency={currency}
+        onClearCampaign={() => setCampaignId(null)}
+      />
     </div>
   );
 }
