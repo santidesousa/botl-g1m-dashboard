@@ -47,6 +47,7 @@ export default function AccountDashboard({ account }) {
     <div>
       <PageHeader
         title={account.label}
+        logo={account.logo}
         subtitle={`Meta Ads · ${data?.account.name || account.id}${data?.account.currency ? ` · ${data.account.currency}` : ""}`}
         range={range}
         onRangeChange={setRange}

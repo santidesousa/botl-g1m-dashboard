@@ -6,7 +6,7 @@ export default function DashboardLayout({ children }) {
   return (
     <div className="app-shell">
       <Suspense fallback={<aside className="sidebar" />}>
-        <Sidebar accounts={ACCOUNTS.map(({ slug, label }) => ({ slug, label }))} />
+        <Sidebar accounts={ACCOUNTS.map(({ slug, label, logoWhite }) => ({ slug, label, logoWhite }))} />
       </Suspense>
       <main className="content">{children}</main>
     </div>

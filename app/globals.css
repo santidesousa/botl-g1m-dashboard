@@ -1331,3 +1331,16 @@ table.data-table {
   border-radius: 100px;
 }
 .stat-strip .text-good b { color: var(--success); }
+
+/* Logos de las cuentas: en el menu (blanco) y en el encabezado (oscuro) */
+.sidebar-account { display: flex; align-items: center; min-height: 44px; }
+.account-logo-nav { height: 22px; width: auto; max-width: 100%; display: block; opacity: 0.75; }
+.sidebar-account:hover .account-logo-nav,
+.sidebar-account.active .account-logo-nav { opacity: 1; }
+.page-logo { margin: 0 0 0.35rem; line-height: 0; }
+.page-logo img { height: 44px; width: auto; display: block; }
+@media (max-width: 900px) {
+  .sidebar-account { min-height: 36px; }
+  .account-logo-nav { height: 18px; }
+  .page-logo img { height: 34px; }
+}

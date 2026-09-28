@@ -30,8 +30,13 @@ export default function Sidebar({ accounts }) {
         {accounts.map((a) => {
           const href = `/dashboard/${a.slug}`;
           return (
-            <Link key={a.slug} href={href + query} className={"sidebar-link" + (pathname === href ? " active" : "")}>
-              {a.label}
+            <Link
+              key={a.slug}
+              href={href + query}
+              className={"sidebar-link sidebar-account" + (pathname === href ? " active" : "")}
+              title={a.label}
+            >
+              <img src={a.logoWhite} alt={a.label} className="account-logo-nav" />
             </Link>
           );
         })}

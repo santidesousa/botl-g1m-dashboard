@@ -8,7 +8,7 @@ import { formatDayLabel, timeAgo } from "./format";
  * Encabezado comun: titulo, rango de fechas, cuando se actualizaron los
  * datos (con boton para forzar datos frescos) y descarga en PDF.
  */
-export default function PageHeader({ title, subtitle, range, onRangeChange, generatedAt, onRefresh, actions }) {
+export default function PageHeader({ title, logo, subtitle, range, onRangeChange, generatedAt, onRefresh, actions }) {
   const [, tick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -29,7 +29,13 @@ export default function PageHeader({ title, subtitle, range, onRangeChange, gene
     <>
       <div className="page-header">
         <div>
-          <h1>{title}</h1>
+          {logo ? (
+            <h1 className="page-logo">
+              <img src={logo} alt={title} />
+            </h1>
+          ) : (
+            <h1>{title}</h1>
+          )}
           {subtitle && <p className="page-sub">{subtitle}</p>}
           {range && (
             <p className="print-only page-sub">
