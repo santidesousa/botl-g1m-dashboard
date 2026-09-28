@@ -12,6 +12,8 @@ import {
 import { creativeImage, creativeText, loadHdImages } from "@/lib/creatives";
 import { parseInsight } from "@/lib/metaMetrics";
 
+const imageFields = ({ url, source }) => ({ image: url, imageSource: source });
+
 // GET /api/meta/ads?account=botl&since=2026-09-01&until=2026-09-27[&campaignId=120...]
 // Sin campaignId: todos los anuncios de la cuenta (los que tuvieron actividad
 // en el periodo + los que estan activos hoy). Con campaignId: solo los de esa
@@ -25,7 +27,7 @@ export async function GET(request) {
     if (campaignId && !/^\d+$/.test(campaignId)) throw httpError("campaignId invalido", 400, "bad_request");
 
     const { data, generatedAt } = await cached(
-      ["ads-v3", account.id, campaignId || "all", range.since, range.until],
+      ["ads-v4", account.id, campaignId || "all", range.since, range.until],
       () => (campaignId ? campaignAds(token, account, campaignId, range) : accountAds(token, account, range))
     );
     return NextResponse.json({ ads: data, generatedAt });
@@ -46,7 +48,7 @@ async function campaignAds(token, account, campaignId, range) {
     adsetName: ad.adset?.name || null,
     campaignId,
     status: ad.effective_status || ad.status,
-    image: creativeImage(ad.creative, hd),
+    ...imageFields(creativeImage(ad.creative, hd)),
     ...creativeText(ad.creative),
     metrics: parseInsight(ad.insights?.data?.[0] || {}),
   }));
@@ -88,7 +90,7 @@ async function accountAds(token, account, range) {
         adsetName: r.adset_name,
         campaignId: r.campaign_id,
         status: obj.effective_status || null,
-        image: creativeImage(obj.creative, hd),
+        ...imageFields(creativeImage(obj.creative, hd)),
         ...creativeText(obj.creative),
         metrics: parseInsight(r),
       };
@@ -102,7 +104,7 @@ async function accountAds(token, account, range) {
         adsetName: a.adset?.name || null,
         campaignId: a.campaign?.id || null,
         status: a.effective_status,
-        image: creativeImage(a.creative, hd),
+        ...imageFields(creativeImage(a.creative, hd)),
         ...creativeText(a.creative),
         metrics: parseInsight({}),
       })),
