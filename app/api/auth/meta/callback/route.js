@@ -1,8 +1,8 @@
 import { ACCOUNTS } from "@/lib/accounts";
-import { getAdAccount } from "@/lib/meta";
+import { GRAPH_BASE_URL, getAdAccount } from "@/lib/meta";
 import { tokenErrorPage, tokenPage } from "@/lib/tokenPage";
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH = GRAPH_BASE_URL;
 
 // GET /api/auth/meta/callback?code=...&state=...
 // Meta redirige aca despues de aceptar los permisos. El token NO se guarda

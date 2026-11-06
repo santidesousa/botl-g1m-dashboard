@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { GRAPH_API_VERSION } from "@/lib/meta";
 
 // Sin esto Next lo prerenderiza en el build y el state quedaria fijo.
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function GET() {
   // state evita ataques CSRF: se guarda en una cookie y se compara al volver.
   const state = crypto.randomBytes(16).toString("hex");
 
-  const authUrl = new URL("https://www.facebook.com/v21.0/dialog/oauth");
+  const authUrl = new URL(`https://www.facebook.com/${GRAPH_API_VERSION}/dialog/oauth`);
   authUrl.searchParams.set("client_id", appId);
   authUrl.searchParams.set("redirect_uri", redirectUri);
   authUrl.searchParams.set("scope", scopes);
