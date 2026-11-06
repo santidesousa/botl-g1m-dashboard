@@ -1344,3 +1344,4 @@ table.data-table {
   .account-logo-nav { height: 18px; }
   .page-logo img { height: 34px; }
 }
+.steps code { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 0.8rem; background: var(--accent-soft); color: var(--accent); padding: 0.05rem 0.3rem; border-radius: 4px; }
