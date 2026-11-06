@@ -23,9 +23,15 @@ npm run dev
 
 ## Token de Meta
 
-El panel lee Meta con `META_ACCESS_TOKEN` (variable de entorno). Para
-obtenerlo, una sola vez: iniciar sesión en el panel, entrar a
-`/api/auth/meta`, aceptar los permisos y copiar el token que muestra la
-página a Vercel. El token de usuario dura ~60 días.
+El panel lee Meta con `META_ACCESS_TOKEN` (variable de entorno). El token
+de usuario dura ~60 días. La pestaña **Conexiones** (`/dashboard/conexiones`)
+muestra cuándo vence, qué cuentas ve, y tiene el botón **Renovar token de
+Meta**.
+
+Con `VERCEL_API_TOKEN` configurado, renovar es un click: después de
+confirmar en Facebook, el panel guarda el token nuevo en Vercel (API de
+Vercel) y redeploya producción; en 1-2 minutos queda activo. Solo se guarda
+si el token ve las dos cuentas. Sin `VERCEL_API_TOKEN`, la página de
+callback muestra el token para copiarlo a mano.
 
 Diagnóstico: `/api/meta/ad-accounts` muestra qué cuentas ve el token.

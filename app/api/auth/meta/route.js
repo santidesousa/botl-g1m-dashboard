@@ -5,9 +5,8 @@ import crypto from "crypto";
 export const dynamic = "force-dynamic";
 
 // GET /api/auth/meta
-// Redirige a la pantalla de login/permisos de Meta. Se usa UNA vez, para
-// obtener el token que despues va en META_ACCESS_TOKEN (no hay boton en el
-// panel: se entra a esta URL a mano).
+// Redirige a la pantalla de login/permisos de Meta para obtener el token de
+// META_ACCESS_TOKEN. Lo dispara el boton "Renovar token" de Conexiones.
 export async function GET() {
   const appId = process.env.META_APP_ID;
   const redirectUri = process.env.META_REDIRECT_URI;

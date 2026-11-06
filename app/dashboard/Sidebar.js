@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-// Una pestana por cuenta publicitaria.
+// Una pestana por cuenta publicitaria, mas Conexiones (token de Meta).
 export default function Sidebar({ accounts }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -40,6 +40,13 @@ export default function Sidebar({ accounts }) {
             </Link>
           );
         })}
+        <div className="sidebar-section">Agencia</div>
+        <Link
+          href={"/dashboard/conexiones" + query}
+          className={"sidebar-link" + (pathname === "/dashboard/conexiones" ? " active" : "")}
+        >
+          Conexiones
+        </Link>
       </nav>
       <form action="/api/logout" method="post" className="sidebar-footer">
         <span className="sidebar-role">Meta Ads</span>
